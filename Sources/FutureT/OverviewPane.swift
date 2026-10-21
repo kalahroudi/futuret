@@ -49,10 +49,14 @@ struct TryItCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
                     StatusDot(color: live.stage.hasPrefix("Error") ? Theme.danger : (live.stage.hasPrefix("Showing") ? Theme.ok : Theme.warn))
-                    Text(live.stage).font(.system(size: 12.5, weight: .medium)).fixedSize(horizontal: false, vertical: true)
+                    Text(live.stage).font(.system(size: 12.5, weight: .medium)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }
                 Text("Keys seen \(live.keys) · accepted \(live.accepted)" + (live.lastMillis.map { " · last suggestion in \($0) ms" } ?? ""))
                     .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Button("Copy report") { Diagnostics.copyReport() }.buttonStyle(Pill())
+                    Text("Status, versions and recent logs, for a bug report. Nothing you typed is included.").font(.system(size: 11)).foregroundStyle(.secondary)
+                }.padding(.top, 4)
                 if !live.lastSuggestion.isEmpty {
                     Text("Last suggestion: \(live.lastSuggestion)").font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(2)
                 }

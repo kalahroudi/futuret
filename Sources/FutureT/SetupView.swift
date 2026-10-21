@@ -29,7 +29,8 @@ struct SetupView: View {
                     .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             if let failed = model.failedSetupMessage {
-                Text(failed).font(.system(size: 12)).foregroundStyle(Theme.danger).fixedSize(horizontal: false, vertical: true)
+                Text(failed).font(.system(size: 12)).foregroundStyle(Theme.danger).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                Button("Copy report") { Diagnostics.copyReport() }.buttonStyle(Pill())
             }
             HStack(spacing: 10) {
                 Button { model.setUpEverything() } label: {
