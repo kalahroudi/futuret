@@ -50,7 +50,7 @@ let allTools: [Tool] = {
 
     t.append(Tool(name: "get_status", description: "Report the app's build, version and whether its prerequisites are installed.", properties: [:], required: []) { _ in
         struct Out: Encodable { let version: String; let ready: Bool; let missing: [String] }
-        let setup = SetupState.detect()
+        let setup = SetupState.detect(modelRepo: UserDefaults(suiteName: "app.futuret.mac")?.string(forKey: "modelRepo") ?? ModelCatalog.recommended(memoryBytes: ProcessInfo.processInfo.physicalMemory).repo)
         return try json(Out(version: BuildInfo.current.version, ready: setup.ready, missing: setup.missing.map(\.title)))
     })
 

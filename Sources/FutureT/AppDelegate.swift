@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         SuggestionCoordinator.shared.start()                             // no-op until the permissions are granted
         Updater.shared.confirmLaunch()                                   // tells a pending swap script "the new version started"
         Task { Updater.shared.autoCheckIfDue(enabled: Prefs.shared.autoCheckUpdates) }
-        if model.needsSetup { showManager() }                            // first run: show the guided setup, not an empty window
+        if model.needsSetup { showManager(); model.beginSetupIfNeeded() }   // first run: show the guided setup and start it, nothing to click
     }
 
     /// The popover does not follow NSApp.appearance on its own (it takes the menu bar's look), so set it explicitly.

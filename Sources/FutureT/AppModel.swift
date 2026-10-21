@@ -31,7 +31,7 @@ final class AppModel {
     // UI state
     var tasks: [BackgroundTask] = []
     var toast: Toast?
-    var setupState = SetupState.detect()
+    var setupState = AppModel.detectSetup()
 
     var onStatusChange: ((StatusIcon.State) -> Void)?
     /// Set by `--snapshot` so screenshots use sample data and nothing is refreshed.
@@ -44,6 +44,11 @@ final class AppModel {
     var settings: Prefs { Prefs.shared }
     /// True until every prerequisite is met: the app then shows the guided setup instead of empty screens.
     var needsSetup: Bool { !setupState.ready }
+    var missingPermission: Bool { setupState.missing.contains { if case .permission = $0.install { true } else { false } } }
+    var failedSetupMessage: String? {
+        if case .failed(let m)? = tasks.last(where: { $0.title == "Setting up FutureT" })?.state { return "Setup stopped: \(m)" }
+        return nil
+    }
     var busy: Bool { tasks.contains { $0.state == .running } }
     var runningTask: BackgroundTask? { tasks.last { $0.state == .running } }
 
@@ -58,7 +63,9 @@ final class AppModel {
             pollTask = Task { [weak self] in
                 while !Task.isCancelled {
                     await self?.refresh()
-                    try? await Task.sleep(for: .seconds(max(2, self?.settings.refreshSeconds ?? 5)))
+                    // While a permission is still missing, look every second so the checklist ticks the moment the switch is flipped.
+                    let waiting = self.map { !Permissions.all && !$0.demo } ?? false
+                    try? await Task.sleep(for: .seconds(waiting ? 1 : max(2, self?.settings.refreshSeconds ?? 5)))
                 }
             }
         } else if !active {
@@ -70,8 +77,8 @@ final class AppModel {
 
     func refresh() async {
         if demo { loadedOnce = true; return }
-        setupState = SetupState.detect()
-        // Do the real reads here, off the main actor (Shell.run is async). Then publish results.
+        setupState = Self.detectSetup()
+        if Permissions.all, !SuggestionCoordinator.shared.isRunning { SuggestionCoordinator.shared.start() }   // granted just now: no restart needed
         onStatusChange?(busy ? .busy : .idle)
         loadedOnce = true; updatedAt = .now
     }
@@ -125,16 +132,52 @@ final class AppModel {
 
     // MARK: First-run setup: automate everything that can be, explain the rest
 
-    func setUpEverything() {
-        let state = SetupState.detect()
-        runTask("Setting up FutureT") { log in
-            if !state.brewFormulae.isEmpty {
-                guard state.homebrewPresent else { throw ShellError.failed(command: "setup", status: 1, stderr: "Homebrew is needed first. Install it, then try again.") }
-                log("Installing \(state.brewFormulae.joined(separator: ", ")) with Homebrew…")
-                try await SetupState.installMissing(state.brewFormulae, onLine: log)
-            }
-            // Create first-run resources here (a default profile, a data folder, a config file).
-            try AppPaths().ensureDirectories()
+    /// Runtime and model from the Kit, plus the two permissions, which only the running app can check.
+    static func detectSetup() -> SetupState {
+        var state = SetupState.detect(modelRepo: Prefs.shared.modelRepo)
+        state.items += [
+            Prereq(id: "accessibility", title: "Accessibility access",
+                   detail: "Lets FutureT see the text before your cursor, and nothing in password fields.",
+                   install: .permission(.accessibility), isMet: Permissions.accessibility),
+            Prereq(id: "input", title: "Input Monitoring",
+                   detail: "Lets Tab, the right arrow and Esc accept or dismiss a suggestion.",
+                   install: .permission(.inputMonitoring), isMet: Permissions.inputMonitoring),
+        ]
+        return state
+    }
+
+    private var askedForPermissions = false
+
+    /// Shows the system prompts (which also list FutureT in Privacy & Security) and opens the pane for whatever is still off.
+    func requestPermissions() {
+        if !Permissions.accessibility { Permissions.requestAccessibility() }
+        if !Permissions.inputMonitoring { Permissions.requestInputMonitoring() }
+    }
+
+    func request(_ kind: PermissionKind) {
+        switch kind {
+        case .accessibility: Permissions.requestAccessibility(); Permissions.openAccessibilityPane()
+        case .inputMonitoring: Permissions.requestInputMonitoring(); Permissions.openInputMonitoringPane()
         }
+    }
+
+    /// Everything at once: the permission prompts straight away, and the runtime and model download in the background.
+    func setUpEverything() {
+        requestPermissions()
+        guard setupState.needsInstall, !busy else { return }
+        let repo = settings.modelRepo
+        let choice = ModelCatalog.all.first { $0.repo == repo } ?? ModelCatalog.recommended(memoryBytes: ProcessInfo.processInfo.physicalMemory)
+        runTask("Setting up FutureT", notifyDone: false) { log in
+            try await Installer(paths: AppPaths()).run(model: choice) { event in
+                if let line = event.log { log(line) }
+            }
+        }
+    }
+
+    /// First launch: start on our own, so nobody has to find a button.
+    func beginSetupIfNeeded() {
+        guard !demo, !askedForPermissions, needsSetup else { return }
+        askedForPermissions = true
+        setUpEverything()
     }
 }
