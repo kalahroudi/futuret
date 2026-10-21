@@ -3,6 +3,7 @@
 import SwiftUI
 import ServiceManagement
 import AppKit
+import FutureTKit
 
 enum ThemeChoice: String, CaseIterable { case system, light, dark
     var label: String { rawValue.capitalized }
@@ -26,17 +27,38 @@ final class Prefs {
     var autoCheckUpdates: Bool { didSet { d.set(autoCheckUpdates, forKey: "autoCheckUpdates") } }
     var sidebarCollapsed: Bool { didSet { d.set(sidebarCollapsed, forKey: "sidebarCollapsed") } }
 
+    // Suggestions
+    var suggestionsEnabled: Bool { didSet { d.set(suggestionsEnabled, forKey: "suggestionsEnabled") } }
+    var length: CompletionLength { didSet { d.set(length.rawValue, forKey: "length") } }
+    var timing: SuggestionTiming { didSet { d.set(timing.rawValue, forKey: "timing") } }
+    var hintMode: KeyHintMode { didSet { d.set(hintMode.rawValue, forKey: "hintMode") } }
+    var acceptedCount: Int { didSet { d.set(acceptedCount, forKey: "acceptedCount") } }
+    var idleUnloadMinutes: Int { didSet { d.set(idleUnloadMinutes, forKey: "idleUnloadMinutes") } }
+    var modelRepo: String { didSet { d.set(modelRepo, forKey: "modelRepo") } }
+    var disabledApps: [String] { didSet { d.set(disabledApps, forKey: "disabledApps") } }
+
     /// Launch at login is on by default; the user can turn it off. Backed by SMAppService (Login Items).
     private(set) var launchAtLogin: Bool = false
     private(set) var launchAtLoginError: String?
 
     private init() {
-        d.register(defaults: ["notify": true, "refreshSeconds": 5, "showDockIcon": true, "autoCheckUpdates": true])
+        d.register(defaults: ["notify": true, "refreshSeconds": 5, "showDockIcon": true, "autoCheckUpdates": true,
+                              "suggestionsEnabled": true, "length": CompletionLength.sentence.rawValue, "timing": SuggestionTiming.balanced.rawValue,
+                              "hintMode": KeyHintMode.untilLearned.rawValue, "idleUnloadMinutes": 5,
+                              "modelRepo": ModelCatalog.recommended(memoryBytes: ProcessInfo.processInfo.physicalMemory).repo])
         theme = ThemeChoice(rawValue: d.string(forKey: "theme") ?? "") ?? .system
         showDockIcon = d.bool(forKey: "showDockIcon")
         notify = d.bool(forKey: "notify")
         refreshSeconds = d.integer(forKey: "refreshSeconds")
         sidebarCollapsed = d.bool(forKey: "sidebarCollapsed")
+        suggestionsEnabled = d.bool(forKey: "suggestionsEnabled")
+        length = CompletionLength(rawValue: d.string(forKey: "length") ?? "") ?? .sentence
+        timing = SuggestionTiming(rawValue: d.string(forKey: "timing") ?? "") ?? .balanced
+        hintMode = KeyHintMode(rawValue: d.string(forKey: "hintMode") ?? "") ?? .untilLearned
+        acceptedCount = d.integer(forKey: "acceptedCount")
+        idleUnloadMinutes = d.integer(forKey: "idleUnloadMinutes")
+        modelRepo = d.string(forKey: "modelRepo") ?? ModelCatalog.all[2].repo
+        disabledApps = d.stringArray(forKey: "disabledApps") ?? []
         autoCheckUpdates = d.bool(forKey: "autoCheckUpdates")
         updateChannel = UpdateChannel(rawValue: d.string(forKey: "updateChannel") ?? "") ?? .releases
         // First run: opt in to launch at login. After that the user's choice always wins.

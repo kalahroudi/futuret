@@ -3,7 +3,7 @@
 import AppKit
 
 /// The app icon, drawn in code so the build needs no image tools and stays crisp at every size.
-/// REPLACE the gradient and glyph with the app's own mark (keep the structure: squircle tile, padded Dock variant).
+/// A violet tile with an "F" whose stem is solid and whose arms fade out: the end of a sentence being finished for you.
 enum AppIcon {
     /// - padded: leave the transparent margin macOS expects around Dock icons (824 of 1024).
     static func image(size: CGFloat, padded: Bool = false) -> NSImage {
@@ -11,12 +11,34 @@ enum AppIcon {
             let s = size / 1024
             let inset: CGFloat = padded ? 100 : 0
             let tile = NSRect(x: inset * s, y: inset * s, width: (1024 - 2 * inset) * s, height: (1024 - 2 * inset) * s)
+            let k = tile.width / 1024                                  // glyph units follow the tile, not the canvas
             let shape = NSBezierPath(roundedRect: tile, xRadius: tile.width * 0.2246, yRadius: tile.width * 0.2246)
-            NSGradient(starting: NSColor(srgbRed: 0.078, green: 0.439, blue: 0.486, alpha: 1), ending: NSColor(srgbRed: 0.027, green: 0.165, blue: 0.216, alpha: 1))?
-                .draw(in: shape, angle: -55)
-            let d = tile.width * 0.42
-            let dot = NSBezierPath(ovalIn: NSRect(x: tile.midX - d / 2, y: tile.midY - d / 2, width: d, height: d))
-            NSColor.white.setFill(); dot.fill()
+
+            if padded, let ctx = NSGraphicsContext.current?.cgContext {   // soft Dock shadow
+                ctx.saveGState()
+                ctx.setShadow(offset: CGSize(width: 0, height: -10 * s), blur: 24 * s, color: NSColor.black.withAlphaComponent(0.28).cgColor)
+                NSColor.black.setFill(); shape.fill()
+                ctx.restoreGState()
+            }
+            NSGradient(starting: NSColor(srgbRed: 0.60, green: 0.45, blue: 1.0, alpha: 1), ending: NSColor(srgbRed: 0.17, green: 0.09, blue: 0.50, alpha: 1))?
+                .draw(in: shape, angle: 60)
+            // gentle top sheen
+            NSGraphicsContext.saveGraphicsState()
+            shape.addClip()
+            NSGradient(starting: NSColor.white.withAlphaComponent(0.10), ending: NSColor.white.withAlphaComponent(0))?
+                .draw(in: NSRect(x: tile.minX, y: tile.minY, width: tile.width, height: tile.height * 0.5), angle: 90)
+            NSGraphicsContext.restoreGraphicsState()
+
+            func bar(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, alpha: CGFloat) {
+                let r = NSRect(x: tile.minX + x * k, y: tile.minY + y * k, width: w * k, height: h * k)
+                NSColor.white.withAlphaComponent(alpha).setFill()
+                NSBezierPath(roundedRect: r, xRadius: min(w, h) * k * 0.5, yRadius: min(w, h) * k * 0.5).fill()
+            }
+            // F: solid stem, top arm slightly softer, middle arm ghosted.
+            bar(360, 232, 364, 124, alpha: 0.92)
+            bar(360, 452, 240, 112, alpha: 0.55)
+            bar(300, 232, 124, 560, alpha: 1.0)
+            bar(660, 456, 64, 104, alpha: 0.28)                        // the suggestion trailing off
             return true
         }
     }

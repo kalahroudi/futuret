@@ -14,6 +14,7 @@ enum FutureTMain {
         let args = CommandLine.arguments
         // Command line helpers used by the build scripts and the updater. They must run before any app state exists.
         if args.contains("--self-test") { print("ok \(BuildInfo.current.commit ?? "dev")"); exit(0) }
+        if args.contains("--probe") { Probe.run(); exit(0) }
         if let i = args.firstIndex(of: "--write-iconset"), i + 1 < args.count {
             do { try AppIcon.writeIconset(to: args[i + 1]); exit(0) } catch { FileHandle.standardError.write(Data("\(error)\n".utf8)); exit(1) }
         }

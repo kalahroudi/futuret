@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
         model.onStatusChange = { [weak self] state in self?.statusItem.button?.image = StatusIcon.image(state) }
 
         Task { await model.refresh() }
+        SuggestionCoordinator.shared.start()                             // no-op until the permissions are granted
         Updater.shared.confirmLaunch()                                   // tells a pending swap script "the new version started"
         Task { Updater.shared.autoCheckIfDue(enabled: Prefs.shared.autoCheckUpdates) }
         if model.needsSetup { showManager() }                            // first run: show the guided setup, not an empty window
@@ -106,6 +107,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSPo
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showManager(); return true
     }
+
+    func applicationWillTerminate(_ notification: Notification) { SuggestionCoordinator.shared.shutdownNow() }
 
     // The app lives in the menu bar: closing the last window must not quit it.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }

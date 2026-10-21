@@ -38,6 +38,12 @@ struct SettingsPane: View {
         @Bindable var p = prefs
         return HStack(alignment: .top, spacing: 18) {
             VStack(spacing: 18) {
+                SettingsGroup("Suggestions") {
+                    SettingRow("Suggest while I type", "Turn off to pause FutureT everywhere. You can also pause from the menu bar.") { Toggle("", isOn: $p.suggestionsEnabled).labelsHidden().toggleStyle(.switch).tint(Theme.accent) }
+                    SettingRow("Length", "How much text one suggestion may contain.") { Segmented(options: CompletionLength.allCases.map { ($0, $0.rawValue.capitalized) }, selection: $p.length) }
+                    SettingRow("Timing", "How soon a suggestion appears after you stop typing.") { Segmented(options: SuggestionTiming.allCases.map { ($0, $0 == .pause ? "After a pause" : $0.rawValue.capitalized) }, selection: $p.timing) }
+                    SettingRow("Key hints", "The small “Tab” chip next to a suggestion. “Until learned” hides it after 10 accepted suggestions.") { Segmented(options: [(KeyHintMode.always, "Always"), (.untilLearned, "Until learned"), (.never, "Never")], selection: $p.hintMode) }
+                }
                 SettingsGroup("Startup") {
                     SettingRow("Launch at login", "Adds the app to Login Items. Turn it off any time.", error: prefs.launchAtLoginError) { Toggle("", isOn: Binding(get: { prefs.launchAtLogin }, set: { prefs.setLaunchAtLogin($0) })).labelsHidden().toggleStyle(.switch).tint(Theme.accent) }
                 }
@@ -47,6 +53,9 @@ struct SettingsPane: View {
                 }
             }.frame(maxWidth: .infinity)
             VStack(spacing: 18) {
+                SettingsGroup("Memory") {
+                    SettingRow("Unload the model when idle", "Frees the memory the model uses after this many minutes without typing. It reloads in a second or two.") { Segmented(options: [(2, "2 min"), (5, "5 min"), (15, "15 min"), (60, "1 h")], selection: $p.idleUnloadMinutes) }
+                }
                 SettingsGroup("Performance") {
                     SettingRow("Refresh only when visible", "Nothing is polled while the popover and window are closed. An idle app uses almost no CPU.") { Badge(text: "always on", kind: .ok) }
                     SettingRow("Refresh interval", nil) { Segmented(options: [(2, "2 s"), (5, "5 s"), (15, "15 s")], selection: $p.refreshSeconds) }
