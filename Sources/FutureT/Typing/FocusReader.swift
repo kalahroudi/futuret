@@ -49,8 +49,18 @@ enum FocusReader {
         snap.before = string(focused, CFRange(location: beforeStart, length: range.location - beforeStart)) ?? ""
         let after = string(focused, CFRange(location: range.location + range.length, length: maxAfter)) ?? ""
         snap.afterOnLine = after.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
-        snap.caretRect = caretRect(focused, location: range.location)
+        snap.caretRect = caretRect(focused, location: range.location, field: snap.fieldFrame)
         return snap
+    }
+
+    /// For `--probe`: the three candidate caret rectangles side by side.
+    static func boundsReport() -> String {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              let el: AXUIElement = copy(AXUIElementCreateApplication(app.processIdentifier), kAXFocusedUIElementAttribute),
+              let r = selectedRange(el) else { return "no range" }
+        let loc = r.location
+        func d(_ x: CGRect?) -> String { x.map { "(\($0.minX), \($0.minY), \($0.width)x\($0.height))" } ?? "nil" }
+        return "loc=\(loc) zero=\(d(bounds(el, CFRange(location: loc, length: 0)))) prev=\(d(bounds(el, CFRange(location: max(0, loc - 1), length: 1)))) next=\(d(bounds(el, CFRange(location: loc, length: 1))))"
     }
 
     // MARK: Attribute helpers
@@ -86,7 +96,7 @@ enum FocusReader {
         return out as? String
     }
 
-    private static func bounds(_ el: AXUIElement, _ range: CFRange) -> CGRect? {
+    static func bounds(_ el: AXUIElement, _ range: CFRange) -> CGRect? {
         var r = range
         guard let arg = AXValueCreate(.cfRange, &r) else { return nil }
         var out: CFTypeRef?
@@ -96,14 +106,21 @@ enum FocusReader {
         return AXValueGetValue(v as! AXValue, .cgRect, &rect) ? rect : nil
     }
 
-    /// The caret rectangle. Some apps answer a zero-length range with nothing useful, so the right edge of the
-    /// character before the cursor is the fallback.
-    private static func caretRect(_ el: AXUIElement, location: Int) -> CGRect? {
-        if let r = bounds(el, CFRange(location: location, length: 0)), r.height > 0, r.width < 50 { return r }
-        if location > 0, let r = bounds(el, CFRange(location: location - 1, length: 1)), r.height > 0 {
+    /// The caret rectangle. The edge of a neighbouring character is the most reliable answer: TextEdit (and others)
+    /// report a zero-length range one line too high. Order: the right edge of the character before the cursor, the left
+    /// edge of the one after it (start of a line), then the zero-length range, shifted down when it lands above the field.
+    private static func caretRect(_ el: AXUIElement, location: Int, field: CGRect?) -> CGRect? {
+        if location > 0, string(el, CFRange(location: location - 1, length: 1)) != "\n",
+           let r = bounds(el, CFRange(location: location - 1, length: 1)), r.height > 0, r.width > 0 {
             return CGRect(x: r.maxX, y: r.minY, width: 1, height: r.height)
         }
-        return nil
+        if let next = string(el, CFRange(location: location, length: 1)), !next.isEmpty, next != "\n",
+           let r = bounds(el, CFRange(location: location, length: 1)), r.height > 0, r.width > 0 {
+            return CGRect(x: r.minX, y: r.minY, width: 1, height: r.height)
+        }
+        guard var r = bounds(el, CFRange(location: location, length: 0)), r.height > 0, r.width < 50 else { return nil }
+        if let field, r.maxY <= field.minY + 2 { r.origin.y += r.height }      // a caret cannot sit above its own field
+        return r
     }
 
     private static func frame(of el: AXUIElement) -> CGRect? {

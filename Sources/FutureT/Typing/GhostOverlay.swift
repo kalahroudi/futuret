@@ -24,7 +24,8 @@ final class GhostOverlay {
         background.state = .active
         background.wantsLayer = true
         background.layer?.cornerRadius = 7
-        label.lineBreakMode = .byClipping
+        label.lineBreakMode = .byTruncatingTail
+        label.cell?.truncatesLastVisibleLine = true
         hint.font = .systemFont(ofSize: 10.5, weight: .medium)
         hint.textColor = .secondaryLabelColor
         panel.contentView = NSView()
@@ -35,9 +36,10 @@ final class GhostOverlay {
     /// - Parameters:
     ///   - caretAX: caret rectangle in Accessibility coordinates
     ///   - fontSize: approximate size of the host text, so the ghost text lines up
-    func show(_ text: String, caretAX: CGRect, fontSize: CGFloat, showHint: Bool) {
+    func show(_ text: String, caretAX: CGRect, fieldAX: CGRect?, textFollows: Bool, fontSize: CGFloat, showHint: Bool) {
         guard let main = NSScreen.screens.first else { return }
         let caret = CaretPlacement.flip(caretAX, mainScreenHeight: main.frame.height)
+        let fieldRight = fieldAX.map { CaretPlacement.flip($0, mainScreenHeight: main.frame.height).maxX - 6 }
         let screen = NSScreen.screens.first { $0.frame.intersects(caret) } ?? main
 
         let font = NSFont.systemFont(ofSize: fontSize)
@@ -45,7 +47,8 @@ final class GhostOverlay {
         label.stringValue = text
         label.textColor = NSColor.labelColor.withAlphaComponent(0.45)
         let textSize = label.intrinsicContentSize
-        let placement = CaretPlacement.place(caret: caret, textWidth: ceil(textSize.width) + 2, lineHeight: ceil(textSize.height), screen: screen.visibleFrame)
+        let placement = CaretPlacement.place(caret: caret, textWidth: ceil(textSize.width) + 2, lineHeight: ceil(textSize.height), screen: screen.visibleFrame,
+                                           rightLimit: showHint ? fieldRight.map { $0 - 34 } : fieldRight, textFollows: textFollows)
 
         let content = panel.contentView!
         content.subviews.forEach { $0.removeFromSuperview() }
@@ -58,7 +61,6 @@ final class GhostOverlay {
                 hint.stringValue = "Tab"
                 let size = hint.intrinsicContentSize
                 frame.size.width += size.width + 12
-                label.frame.size.width = ceil(textSize.width) + 2
                 hint.frame = CGRect(x: label.frame.maxX + 6, y: (frame.height - size.height) / 2, width: size.width, height: size.height)
                 content.addSubview(hint)
             }
@@ -67,6 +69,7 @@ final class GhostOverlay {
             content.addSubview(background)
             label.textColor = .labelColor
             label.frame = CGRect(x: 8, y: 4, width: frame.width - 16, height: textSize.height)
+            label.lineBreakMode = .byTruncatingTail
             content.addSubview(label)
         }
         panel.setFrame(frame, display: true)

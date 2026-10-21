@@ -14,6 +14,7 @@ enum Probe {
                     let verdict = FieldPolicy().evaluate(bundleID: s.bundleID, role: s.role, subrole: s.subrole, isEditable: s.isEditable)
                     print("app=\(s.bundleID ?? "?") role=\(s.role ?? "?") editable=\(s.isEditable) verdict=\(verdict)")
                     print("  before=\(s.before.suffix(60).debugDescription) after=\(s.afterOnLine.prefix(40).debugDescription)")
+                    print("  \(FocusReader.boundsReport())")
                     print("  caret=\(s.caretRect.map { "\($0)" } ?? "nil") field=\(s.fieldFrame.map { "\($0)" } ?? "nil")")
                 } else { print("no focused element") }
             }

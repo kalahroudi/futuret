@@ -131,10 +131,18 @@ public enum CaretPlacement {
     ///   - textWidth: width the suggestion needs on one line
     ///   - lineHeight: height of the caret line
     ///   - screen: visible frame of the screen holding the caret
-    public static func place(caret: CGRect, textWidth: CGFloat, lineHeight: CGFloat, screen: CGRect) -> Result {
-        let room = screen.maxX - caret.maxX - 8
-        if textWidth <= room {
-            return Result(frame: CGRect(x: caret.maxX, y: caret.minY, width: textWidth, height: max(lineHeight, caret.height)), style: .inline)
+    public static func place(caret: CGRect, textWidth: CGFloat, lineHeight: CGFloat, screen: CGRect, rightLimit: CGFloat? = nil, textFollows: Bool = false) -> Result {
+        let edge = min(screen.maxX, rightLimit ?? screen.maxX)
+        let room = edge - caret.maxX - 8
+        let height = max(lineHeight, caret.height)
+        let lineY = caret.minY + (caret.height - height) / 2
+        // Text already sits to the right of the cursor: drawing inline would land on top of it, so use the card.
+        if !textFollows, textWidth <= room {
+            return Result(frame: CGRect(x: caret.maxX, y: lineY, width: textWidth, height: height), style: .inline)
+        }
+        // Not all of it fits on the line, but enough does: show the start, cut with an ellipsis. Accepting still inserts it all.
+        if !textFollows, room >= 140 {
+            return Result(frame: CGRect(x: caret.maxX, y: lineY, width: room, height: height), style: .inline)
         }
         // No room on the line: a small card below the caret, kept on screen.
         let width = min(max(textWidth, 160), 360)

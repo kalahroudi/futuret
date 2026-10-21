@@ -170,7 +170,7 @@ final class SuggestionCoordinator {
         keyTap.suggestionVisible = true
         live.stage = "Showing a suggestion. Tab accepts, → takes a word, Esc dismisses"
         live.lastSuggestion = s.remaining
-        overlay.show(s.remaining, caretAX: caret, fontSize: max(10, min(30, caret.height / 1.25)),
+        overlay.show(s.remaining, caretAX: caret, fieldAX: snap.fieldFrame, textFollows: !snap.afterOnLine.trimmingCharacters(in: .whitespaces).isEmpty, fontSize: max(10, min(30, caret.height / 1.25)),
                      showHint: prefs.hintMode.shouldShow(acceptedCount: prefs.acceptedCount))
     }
 

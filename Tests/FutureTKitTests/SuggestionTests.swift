@@ -73,4 +73,20 @@ final class SuggestionTests: XCTestCase {
         XCTAssertTrue(KeyHintMode.always.shouldShow(acceptedCount: 999))
         XCTAssertFalse(KeyHintMode.never.shouldShow(acceptedCount: 0))
     }
+
+    func testGhostNeverDrawsOverTextAfterTheCursor() {
+        let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let caret = CGRect(x: 100, y: 400, width: 1, height: 16)
+        XCTAssertEqual(CaretPlacement.place(caret: caret, textWidth: 120, lineHeight: 16, screen: screen).style, .inline)
+        XCTAssertEqual(CaretPlacement.place(caret: caret, textWidth: 120, lineHeight: 16, screen: screen, textFollows: true).style, .card)
+    }
+
+    func testGhostStaysInsideTheField() {
+        let screen = CGRect(x: 0, y: 0, width: 1000, height: 800)
+        let caret = CGRect(x: 100, y: 400, width: 1, height: 16)
+        let r = CaretPlacement.place(caret: caret, textWidth: 700, lineHeight: 16, screen: screen, rightLimit: 400)
+        XCTAssertEqual(r.style, .inline)
+        XCTAssertLessThanOrEqual(r.frame.maxX, 400)
+        XCTAssertEqual(CaretPlacement.place(caret: caret, textWidth: 700, lineHeight: 16, screen: screen, rightLimit: 180).style, .card)
+    }
 }
