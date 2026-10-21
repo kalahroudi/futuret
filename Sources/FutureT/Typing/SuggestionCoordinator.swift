@@ -143,11 +143,29 @@ final class SuggestionCoordinator {
         }
     }
 
+    /// One shared start. Typing cancels the pending suggestion on every key, and a second start would kill the half-loaded
+    /// server and begin again, so the model would never finish loading. The start runs on its own task, and every
+    /// suggestion just waits for it.
+    private var starting: Task<Void, Error>?
+
     private func ensureServer() async throws {
         if case .running = await server.state { live.server = "Model ready"; return }
-        live.server = "Loading the model…"; live.stage = "Loading the model (first time takes a few seconds)…"
-        try await server.start(repo: prefs.modelRepo)
-        live.server = "Model ready"
+        if starting == nil {
+            live.server = "Loading the model…"
+            let repo = prefs.modelRepo
+            starting = Task { [server] in try await server.start(repo: repo) }
+        }
+        live.stage = "Loading the model (first time takes a few seconds)…"
+        guard let task = starting else { return }
+        do {
+            try await task.value
+            starting = nil
+            live.server = "Model ready"
+        } catch {
+            starting = nil
+            live.server = "Model failed to load"
+            throw error
+        }
     }
 
     private func scheduleIdleUnload() {
