@@ -8,6 +8,7 @@ let package = Package(
     products: [
         .executable(name: "FutureT", targets: ["FutureT"]),
         .executable(name: "futuret-mcp", targets: ["futuret-mcp"]),
+        .executable(name: "futuret-cli", targets: ["futuret-cli"]),
         .library(name: "FutureTKit", targets: ["FutureTKit"]),
     ],
     targets: [
@@ -17,6 +18,8 @@ let package = Package(
         .executableTarget(name: "FutureT", dependencies: ["FutureTKit"]),
         // Model Context Protocol server (stdio) so agents can drive the app's capabilities.
         .executableTarget(name: "futuret-mcp", dependencies: ["FutureTKit"]),
+        // Headless tools for development and CI: setup into a scratch folder, model benchmark.
+        .executableTarget(name: "futuret-cli", dependencies: ["FutureTKit"]),
         .testTarget(name: "FutureTKitTests", dependencies: ["FutureTKit"]),
     ],
     swiftLanguageModes: [.v5]
