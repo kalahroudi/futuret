@@ -3,6 +3,18 @@
 import AppKit
 import FutureTKit
 
+/// What the coordinator is doing right now, in plain words, for the Overview's "Try it" card.
+/// Only read while that card is on screen, so it costs nothing otherwise.
+@MainActor @Observable
+final class LiveStatus {
+    var keys = 0
+    var stage = "Waiting for you to type"
+    var server = "Model not loaded"
+    var lastSuggestion = ""
+    var lastMillis: Int?
+    var accepted = 0
+}
+
 /// Ties the pieces together: key events → read the field → ask the model → show ghost text → insert on accept.
 /// Every result is checked against the current work number and the field's text before it is shown, because the
 /// user keeps typing while the model thinks.
@@ -21,6 +33,7 @@ final class SuggestionCoordinator {
     private var observers: [NSObjectProtocol] = []
     private let debug = ProcessInfo.processInfo.environment["FUTURET_DEBUG"] != nil
     private func log(_ s: @autoclosure () -> String) { if debug { FileHandle.standardError.write(Data(("[futuret] " + s() + "\n").utf8)) } }
+    let live = LiveStatus()
     private(set) var lastNote = ""      // why nothing is showing, for the popover
 
     var isRunning: Bool { keyTap.isRunning }
@@ -60,6 +73,7 @@ final class SuggestionCoordinator {
 
     private func typed() {
         log("key")
+        live.keys += 1
         pending?.cancel()
         work += 1
         let mine = work
@@ -89,11 +103,22 @@ final class SuggestionCoordinator {
 
     private func generate(work mine: Int) async {
         log("generate: enabled=\(prefs.suggestionsEnabled) model=\(modelReady)")
-        guard prefs.suggestionsEnabled, modelReady, let snap = FocusReader.read() else { return }
+        guard prefs.suggestionsEnabled else { live.stage = "Suggestions are switched off in Settings"; return }
+        guard modelReady else { live.stage = "The model is not installed yet"; return }
+        guard let snap = FocusReader.read() else { live.stage = "Can't see a text field here, so no suggestion"; return }
         log("snap app=\(snap.bundleID ?? "?") before=\(snap.before.suffix(30).debugDescription)")
         let policy = FieldPolicy(disabledApps: Set(prefs.disabledApps), enabled: prefs.suggestionsEnabled)
-        guard case .allowed = policy.evaluate(bundleID: snap.bundleID, role: snap.role, subrole: snap.subrole, isEditable: snap.isEditable) else { dismiss(); return }
-        guard !snap.hasSelection, !snap.before.isEmpty, !ContextGuard.shouldHold(before: snap.before) else { dismiss(); return }
+        let verdict = policy.evaluate(bundleID: snap.bundleID, role: snap.role, subrole: snap.subrole, isEditable: snap.isEditable)
+        guard case .allowed = verdict else {
+            var reason = "this kind of field is off limits"
+            if case .blocked(let r) = verdict { reason = r }
+            live.stage = "Held back in \(snap.appName ?? "this app"): \(reason)"; dismiss(); return
+        }
+        guard !snap.hasSelection, !snap.before.isEmpty, !ContextGuard.shouldHold(before: snap.before) else {
+            live.stage = "Held back: nothing typed yet, a selection, or you're typing a link, email or number"; dismiss(); return
+        }
+        live.stage = "Thinking…"
+        let started = Date()
 
         let length: CompletionLength = snap.afterOnLine.isEmpty ? prefs.length : .phrase   // mid-line: keep it short
         let ctx = CompletionContext(appName: snap.appName ?? "", style: "", phrases: [], before: snap.before, after: snap.afterOnLine)
@@ -103,7 +128,10 @@ final class SuggestionCoordinator {
             let r = try await client.complete(prompt: PromptBuilder.build(ctx), maxTokens: length.maxTokens, stop: length.stop)
             guard mine == work, !Task.isCancelled else { return }
             log("raw=\(r.text.debugDescription)")
-            guard let text = SuggestionCleaner.clean(r.text, before: snap.before, length: length, truncated: r.truncated) else { return }
+            guard let text = SuggestionCleaner.clean(r.text, before: snap.before, length: length, truncated: r.truncated) else {
+                live.stage = "The model had nothing useful to add here"; return
+            }
+            live.lastMillis = Int(Date().timeIntervalSince(started) * 1000)
             // The field may have changed while the model worked.
             guard let now = FocusReader.read(), now.before == snap.before else { return }
             session = SuggestionSession(anchor: snap.before, suggestion: text)
@@ -111,13 +139,15 @@ final class SuggestionCoordinator {
             scheduleIdleUnload()
         } catch is CancellationError {
         } catch {
-            lastNote = error.localizedDescription; log("error: \(error.localizedDescription)")
+            lastNote = error.localizedDescription; live.stage = "Error: \(error.localizedDescription)"; log("error: \(error.localizedDescription)")
         }
     }
 
     private func ensureServer() async throws {
-        if case .running = await server.state { return }
+        if case .running = await server.state { live.server = "Model ready"; return }
+        live.server = "Loading the model…"; live.stage = "Loading the model (first time takes a few seconds)…"
         try await server.start(repo: prefs.modelRepo)
+        live.server = "Model ready"
     }
 
     private func scheduleIdleUnload() {
@@ -127,6 +157,7 @@ final class SuggestionCoordinator {
             try? await Task.sleep(for: .seconds(minutes * 60))
             guard !Task.isCancelled, let self else { return }
             await self.server.stop()
+            self.live.server = "Model unloaded to free memory"
         }
     }
 
@@ -137,6 +168,8 @@ final class SuggestionCoordinator {
         let caret = snap.caretRect ?? snap.fieldFrame.map { CGRect(x: $0.minX + 8, y: $0.minY + 4, width: 1, height: 18) }
         guard let caret else { dismiss(); return }
         keyTap.suggestionVisible = true
+        live.stage = "Showing a suggestion. Tab accepts, → takes a word, Esc dismisses"
+        live.lastSuggestion = s.remaining
         overlay.show(s.remaining, caretAX: caret, fontSize: max(10, min(30, caret.height / 1.25)),
                      showHint: prefs.hintMode.shouldShow(acceptedCount: prefs.acceptedCount))
     }
@@ -151,11 +184,14 @@ final class SuggestionCoordinator {
         guard var s = session else { return }
         switch action {
         case .dismiss:
+            live.stage = "Dismissed"
             dismiss()
         case .acceptAll, .acceptWord:
             let chunk = action == .acceptAll ? s.remaining : s.nextWord
             guard !chunk.isEmpty else { dismiss(); return }
             TextInserter.type(chunk)
+            live.accepted += 1
+            live.stage = action == .acceptAll ? "Accepted the suggestion" : "Accepted one word"
             s.accepted(chunk)
             session = s
             if action == .acceptAll || s.remaining.isEmpty { prefs.acceptedCount += 1 }

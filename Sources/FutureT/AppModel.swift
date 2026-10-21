@@ -78,6 +78,8 @@ final class AppModel {
     func refresh() async {
         if demo { loadedOnce = true; return }
         setupState = Self.detectSetup()
+        let seen = "ax=\(Permissions.accessibility) input=\(Permissions.inputMonitoring) tap=\(SuggestionCoordinator.shared.isRunning)"
+        if seen != lastSeen { lastSeen = seen; Permissions.note(seen) }
         if Permissions.all, !SuggestionCoordinator.shared.isRunning { SuggestionCoordinator.shared.start() }   // granted just now: no restart needed
         onStatusChange?(busy ? .busy : .idle)
         loadedOnce = true; updatedAt = .now
@@ -147,6 +149,7 @@ final class AppModel {
     }
 
     private var askedForPermissions = false
+    private var lastSeen = ""
 
     /// Shows the system prompts (which also list FutureT in Privacy & Security) and opens the pane for whatever is still off.
     func requestPermissions() {

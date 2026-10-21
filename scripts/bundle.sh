@@ -50,7 +50,12 @@ PLIST
 
 # Ad-hoc signed by default. With SIGN_IDENTITY set to a "Developer ID Application: ..." identity it is signed
 # for distribution with the hardened runtime.
-if [ "${SIGN_IDENTITY:--}" = "-" ]; then
+# LOCAL_SIGN_IDENTITY (a self-signed or development certificate) keeps the signature's designated requirement
+# stable between builds, so the Accessibility and Input Monitoring grants survive a rebuild or an update.
+# Plain ad-hoc signing ties a grant to one exact build, and macOS drops it on the next one.
+if [ -n "${LOCAL_SIGN_IDENTITY:-}" ]; then
+  SIGN_FLAGS=(--force --sign "$LOCAL_SIGN_IDENTITY")
+elif [ "${SIGN_IDENTITY:--}" = "-" ]; then
   SIGN_FLAGS=(--force --sign -)
 else
   SIGN_FLAGS=(--force --timestamp --options runtime --entitlements scripts/FutureT.entitlements --sign "$SIGN_IDENTITY")
