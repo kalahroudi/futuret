@@ -123,9 +123,21 @@ final class SuggestionCoordinator {
         let length: CompletionLength = snap.afterOnLine.isEmpty ? prefs.length : .phrase   // mid-line: keep it short
         let ctx = CompletionContext(appName: snap.appName ?? "", style: "", phrases: [], before: snap.before, after: snap.afterOnLine)
         do {
-            try await ensureServer()
-            let client = CompletionClient(port: await server.port)
-            let r = try await client.complete(prompt: PromptBuilder.build(ctx), maxTokens: length.maxTokens, stop: length.stop)
+            let prompt = PromptBuilder.build(ctx)
+            var r: CompletionClient.Result
+            do {
+                try await ensureServer()
+                r = try await CompletionClient(port: await server.port).complete(prompt: prompt, maxTokens: length.maxTokens, stop: length.stop)
+            } catch let error where Self.serverIsDead(error) {
+                // The model server died (its generation thread, or the process). Start a fresh one and try once more.
+                log("server died: \(error.localizedDescription); restarting")
+                Permissions.note("server died: \(error.localizedDescription)")
+                live.stage = "The model stopped; restarting it…"; live.server = "Restarting the model…"
+                starting = nil
+                await server.stop()
+                try await ensureServer()
+                r = try await CompletionClient(port: await server.port).complete(prompt: prompt, maxTokens: length.maxTokens, stop: length.stop)
+            }
             guard mine == work, !Task.isCancelled else { return }
             log("raw=\(r.text.debugDescription)")
             guard let text = SuggestionCleaner.clean(r.text, before: snap.before, length: length, truncated: r.truncated) else {
@@ -147,6 +159,12 @@ final class SuggestionCoordinator {
     /// server and begin again, so the model would never finish loading. The start runs on its own task, and every
     /// suggestion just waits for it.
     private var starting: Task<Void, Error>?
+
+    private static func serverIsDead(_ error: Error) -> Bool {
+        if let e = error as? ModelServerError, case .badResponse(let body) = e { return body.lowercased().contains("thread died") }
+        if let e = error as? URLError { return [.cannotConnectToHost, .networkConnectionLost, .badServerResponse].contains(e.code) }
+        return false
+    }
 
     private func ensureServer() async throws {
         if case .running = await server.state { live.server = "Model ready"; return }

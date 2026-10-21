@@ -86,8 +86,10 @@ public actor ModelServer {
         self.repo = repo; port = chosen
 
         let logs = self.logs
+        let logFile = paths.logsDir.appendingPathComponent("server.log")
+        Self.startLogFile(logFile)
         let p = ManagedProcess(executable: paths.mlxServer, arguments: Self.arguments(repo: repo, port: chosen),
-                               environment: environment()) { logs.append($0) }
+                               environment: environment()) { logs.append($0); Self.appendLog($0, to: logFile) }
         do { try p.start() } catch { state = .failed(error.localizedDescription); throw error }
         process = p; current.process = p
         if let t = ProcessTree.startTime(of: p.processIdentifier) {
@@ -113,6 +115,19 @@ public actor ModelServer {
         }
         if mine == generation { await terminateCurrent(); state = .failed("Timed out") }
         throw ModelServerError.timeout
+    }
+
+    /// The server's own output, kept on disk so a crash can be read afterwards. Restarted when it grows past 1 MB.
+    static func startLogFile(_ url: URL) {
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        if size > 1_000_000 { try? FileManager.default.removeItem(at: url) }
+        appendLog("--- server starting \(ISO8601DateFormatter().string(from: .now))", to: url)
+    }
+
+    static func appendLog(_ line: String, to url: URL) {
+        guard let data = (line + "\n").data(using: .utf8) else { return }
+        if let h = try? FileHandle(forWritingTo: url) { defer { try? h.close() }; _ = try? h.seekToEnd(); try? h.write(contentsOf: data) }
+        else { try? data.write(to: url) }
     }
 
     public func stop() async {
